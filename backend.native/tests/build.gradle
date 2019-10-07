@@ -3556,7 +3556,7 @@ interopTest("interop_objc_smoke") {
         flags += "-nodefaultlibs"
     }
 
-    doBefore {
+    doBeforeBuild {
         execKonanClang(project.target) {
             args "$projectDir/interop/objc/smoke.m"
             args "-lobjc", '-fobjc-arc'
@@ -3581,7 +3581,7 @@ interopTest("interop_objc_global_initializer") {
     interop = 'objcMisc'
     flags = ['-g']
 
-    doBefore {
+    doBeforeBuild {
         execKonanClang(project.target) {
             args "$projectDir/interop/objc_with_initializer/objc_misc.m"
             args "-lobjc", '-fobjc-arc'
@@ -3599,7 +3599,7 @@ interopTest("interop_objc_msg_send") {
     source = "interop/objc/msg_send/main.kt"
     interop = 'objcMessaging'
 
-    doBefore {
+    doBeforeBuild {
         execKonanClang(project.target) {
             args "$projectDir/interop/objc/msg_send/messaging.m"
             args "-lobjc", '-fobjc-arc'
@@ -3619,7 +3619,7 @@ interopTest("interop_objc_kt34467") {
 }
 
 standaloneTest("jsinterop_math") {
-    doBefore {
+    doBeforeBuild {
         def jsinteropScript = isWindows() ? "jsinterop.bat" : "jsinterop"
         def jsinterop = "$dist/bin/$jsinteropScript"
         // TODO: We probably need a NativeInteropPlugin for jsinterop?
@@ -3687,7 +3687,7 @@ task library_mismatch(type: KonanDriverTest) {
         dependsOn ':wasm32CrossDistEndorsedLibraries'
     }
 
-    doBefore {
+    doBeforeBuild {
         def konancScript = isWindows() ? "konanc.bat" : "konanc"
         def konanc = "$dist/bin/$konancScript"
         "$konanc $lib -p library -o $dir/1.2/empty -target $currentTarget -lv 1.2".execute().waitFor()
@@ -3713,7 +3713,7 @@ task library_ir_provider_mismatch(type: KonanDriverTest) {
 
     def currentTarget = project.target.name
 
-    doBefore {
+    doBeforeBuild {
         def konancScript = isWindows() ? "konanc.bat" : "konanc"
         def konanc = "$dist/bin/$konancScript"
         "$konanc $lib -p library -o $dir/supported_ir_provider/empty -target $currentTarget".execute().waitFor()
@@ -3842,6 +3842,7 @@ if (isAppleTarget(project)) {
                     dependsOn ":${targetName}CrossDistRuntime", ':commonDistRuntime', ':distCompiler'
                 }
 
+                extraOpts "-Xembed-bitcode"
                 extraOpts project.globalTestArgs
             }
 
@@ -3854,6 +3855,7 @@ if (isAppleTarget(project)) {
                     dependsOn ":${targetName}CrossDistRuntime", ':commonDistRuntime', ':distCompiler'
                 }
 
+                extraOpts "-Xembed-bitcode"
                 extraOpts project.globalTestArgs
             }
         }
@@ -4047,4 +4049,21 @@ task buildKonanTests { t ->
     project.tasks
             .matching { !(it instanceof KonanStandaloneTest) && it instanceof KonanLocalTest }
             .forEach { it.dependsOn(t) }
+}
+
+if (PlatformInfo.getTarget(project) == KonanTarget.IOS_ARM64.INSTANCE) {
+    project.tasks
+            .matching { it instanceof KonanTestExecutable }
+            .forEach {
+                ExecutorServiceKt.xcodeBuild((KonanTestExecutable) it)
+            }
+    // Exclude tasks that can not be run on device
+    project.tasks
+            .matching { (it instanceof KonanLocalTest && ((KonanLocalTest) it).testData != null) ||
+                    // Filter out tests that depend on libs. TODO: copy them too
+                    it instanceof KonanInteropTest ||
+                    it instanceof KonanDynamicTest ||
+                    it instanceof KonanLinkTest
+            }
+            .forEach { it.enabled = false }
 }
