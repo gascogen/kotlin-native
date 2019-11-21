@@ -50,7 +50,7 @@ internal class CachedLibraries(
         cache?.let { library to it }
     }.toMap()
 
-    private fun getArtifactName(baseName: String, kind: CompilerOutputKind) =
+    fun getArtifactName(baseName: String, kind: CompilerOutputKind) =
             "${kind.prefix(target)}$baseName${kind.suffix(target)}"
 
     fun isLibraryCached(library: KotlinLibrary): Boolean =

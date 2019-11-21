@@ -94,7 +94,7 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
 
     val K2NativeCompilerArguments.isUsefulWithoutFreeArgs: Boolean
         get() = listTargets || listPhases || checkDependencies || !includes.isNullOrEmpty() ||
-                !librariesToCache.isNullOrEmpty()
+                !librariesToCache.isNullOrEmpty() || libraryToAddToCache != null
 
     fun Array<String>?.toNonNullList(): List<String> {
         return this?.asList<String>() ?: listOf<String>()
@@ -114,7 +114,7 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
         with(KonanConfigKeys) {
             with(configuration) {
 
-                put(NODEFAULTLIBS, arguments.nodefaultlibs)
+                put(NODEFAULTLIBS, arguments.nodefaultlibs || !arguments.libraryToAddToCache.isNullOrEmpty())
                 put(NOENDORSEDLIBS, arguments.noendorsedlibs)
                 put(NOSTDLIB, arguments.nostdlib)
                 put(NOPACK, arguments.nopack)
@@ -217,7 +217,14 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
                 put(OBJC_GENERICS, arguments.objcGenerics)
 
                 put(LIBRARIES_TO_CACHE, parseLibrariesToCache(arguments, configuration, outputKind))
-                put(CACHE_DIRECTORIES, arguments.cacheDirectories.toNonNullList())
+                val libraryToAddToCache = parseLibraryToAddToCache(arguments, configuration, outputKind)
+                val cacheDirectories = arguments.cacheDirectories.toNonNullList()
+                getOutputForLibraryBeingAddedToCache(arguments, configuration, libraryToAddToCache, cacheDirectories).let {
+                    if (it.isNotEmpty())
+                        put(OUTPUT, it)
+                }
+                put(LIBRARY_TO_ADD_TO_CACHE, libraryToAddToCache)
+                put(CACHE_DIRECTORIES, cacheDirectories)
                 put(CACHED_LIBRARIES, parseCachedLibraries(arguments, configuration))
             }
         }
@@ -341,9 +348,53 @@ private fun parseLibrariesToCache(
     return if (input.isNotEmpty() && !outputKind.isCache) {
         configuration.report(ERROR, "$MAKE_CACHE can't be used when not producing cache")
         emptyList()
+    } else if (input.isNotEmpty() && !arguments.libraryToAddToCache.isNullOrEmpty()) {
+        configuration.report(ERROR, "supplied both $MAKE_CACHE and $ADD_CACHE options")
+        emptyList()
     } else {
         input
     }
+}
+
+private fun parseLibraryToAddToCache(
+        arguments: K2NativeCompilerArguments,
+        configuration: CompilerConfiguration,
+        outputKind: CompilerOutputKind
+): String {
+    val input = arguments.libraryToAddToCache ?: ""
+
+    return if (input != "" && !outputKind.isCache) {
+        configuration.report(ERROR, "$ADD_CACHE can't be used when not producing cache")
+        ""
+    } else {
+        input
+    }
+}
+
+private fun getOutputForLibraryBeingAddedToCache(
+        arguments: K2NativeCompilerArguments,
+        configuration: CompilerConfiguration,
+        libraryToAddToCache: String,
+        cacheDirectories: List<String>
+): String {
+    if (libraryToAddToCache.isEmpty()) return ""
+    if (!arguments.outputName.isNullOrEmpty()) {
+        configuration.report(ERROR, "$ADD_CACHE already implicitly sets output file name")
+        return ""
+    }
+    val cacheDirectory = cacheDirectories
+            .map {
+                File(it).takeIf { it.isDirectory }
+                        ?: run {
+                            configuration.report(ERROR, "cache directory $it is not found or not a directory")
+                            return ""
+                        }
+            }.firstOrNull()
+            ?: run {
+                configuration.report(ERROR, "expected at least one cache directory")
+                return ""
+            }
+    return cacheDirectory.child(" ${File(libraryToAddToCache).name}-cache").absolutePath
 }
 
 fun main(args: Array<String>) = K2Native.main(args)

@@ -41,10 +41,6 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
     internal val target = targetManager.target
     internal val phaseConfig = configuration.get(CLIConfigurationKeys.PHASE_CONFIG)!!
 
-    val infoArgsOnly = configuration.kotlinSourceRoots.isEmpty()
-            && configuration[KonanConfigKeys.INCLUDED_LIBRARIES].isNullOrEmpty()
-            && configuration[KonanConfigKeys.LIBRARIES_TO_CACHE].isNullOrEmpty()
-
     // TODO: debug info generation mode and debug/release variant selection probably requires some refactoring.
     val debug: Boolean get() = configuration.getBoolean(KonanConfigKeys.DEBUG)
     val lightDebug: Boolean get() = configuration.getBoolean(KonanConfigKeys.LIGHT_DEBUG)
@@ -94,7 +90,10 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
         get() = configuration.getList(KonanConfigKeys.INCLUDED_LIBRARIES).map { File(it) }
 
     private val librariesToCacheFiles
-        get() = configuration.getList(KonanConfigKeys.LIBRARIES_TO_CACHE).map { File(it) }
+        get() = configuration.getList(KonanConfigKeys.LIBRARIES_TO_CACHE).map { File(it) } +
+                configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE).let {
+                    if (it.isNullOrEmpty()) emptyList() else listOf(File(it))
+                }
 
     private val unresolvedLibraries = libraryNames.toUnresolvedLibraries
 
@@ -159,6 +158,10 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
 
     internal val librariesToCache: Set<KotlinLibrary>
         get() = cacheSupport.librariesToCache
+
+    val infoArgsOnly = configuration.kotlinSourceRoots.isEmpty()
+            && configuration[KonanConfigKeys.INCLUDED_LIBRARIES].isNullOrEmpty()
+            && librariesToCache.isEmpty()
 
     fun librariesWithDependencies(moduleDescriptor: ModuleDescriptor?): List<KonanLibrary> {
         if (moduleDescriptor == null) error("purgeUnneeded() only works correctly after resolve is over, and we have successfully marked package files as needed or not needed.")

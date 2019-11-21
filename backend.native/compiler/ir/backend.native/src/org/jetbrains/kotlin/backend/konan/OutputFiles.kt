@@ -33,6 +33,14 @@ class OutputFiles(outputPath: String?, target: KonanTarget, produce: CompilerOut
      * Main compiler's output file.
      */
     val mainFile = outputName
-            .prefixBaseNameIfNot(prefix)
+            .prefixBaseNameAlways(prefix)
             .suffixIfNot(suffix)
+
+    private fun String.prefixBaseNameAlways(prefix: String): String {
+        val file = File(this).absoluteFile
+        val name = file.name
+        val directory = file.parent
+        return "$directory/$prefix$name"
+    }
+
 }

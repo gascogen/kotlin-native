@@ -47,14 +47,40 @@ class CacheSupport(
         )
     }
 
-    internal val librariesToCache: Set<KotlinLibrary> = configuration.get(KonanConfigKeys.LIBRARIES_TO_CACHE)!!
-            .map { File(it) }.map {
-                fileToLibrary[it] ?: error("library to cache\n" +
-                        "  ${it.absolutePath}\n" +
-                        "not found among resolved libraries:\n  " +
-                        allLibraries.joinToString("\n  ") { it.libraryFile.absolutePath })
-            }.toSet()
-            .also { if (!produce.isCache) check(it.isEmpty()) }
+    private fun getLibrary(file: File) =
+            fileToLibrary[file] ?: error("library to cache\n" +
+                    "  ${file.absolutePath}\n" +
+                    "not found among resolved libraries:\n  " +
+                    allLibraries.joinToString("\n  ") { it.libraryFile.absolutePath })
+
+    internal val librariesToCache: Set<KotlinLibrary> = run {
+        val libraryToAddToCachePath = configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE)
+        if (libraryToAddToCachePath.isNullOrEmpty()) {
+            configuration.get(KonanConfigKeys.LIBRARIES_TO_CACHE)!!
+                    .map { getLibrary(File(it)) }
+                    .toSet()
+                    .also { if (!produce.isCache) check(it.isEmpty()) }
+        } else {
+            // Put the resulting library in the first cache directory.
+            val cacheDirectory = File(configuration.get(KonanConfigKeys.CACHE_DIRECTORIES)!!.first())
+
+            val libraryToAddToCacheFile = File(libraryToAddToCachePath)
+            val libraryToAddToCache = getLibrary(libraryToAddToCacheFile)
+            val libraryCache = cachedLibraries.getLibraryCache(libraryToAddToCache)
+            if (libraryCache != null)
+                emptySet()
+            else {
+                val lockFile = java.io.File(cacheDirectory.absolutePath,
+                        "${cachedLibraries.getArtifactName(libraryToAddToCacheFile.name, produce)}.lock")
+                if (!lockFile.createNewFile())
+                    emptySet()
+                else {
+                    lockFile.deleteOnExit()
+                    setOf(libraryToAddToCache)
+                }
+            }
+        }
+    }
 
     init {
         // Ensure dependencies of every cached library are cached too:
