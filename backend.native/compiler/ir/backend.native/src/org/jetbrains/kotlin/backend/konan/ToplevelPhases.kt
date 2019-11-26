@@ -269,10 +269,16 @@ internal val renameOutputPhase = konanUnitPhase(
             if ((config.produce == CompilerOutputKind.DYNAMIC_CACHE
                     || config.produce == CompilerOutputKind.STATIC_CACHE) && !libraryToAddToCache.isNullOrEmpty()) {
                 val outputFile = File(config.outputFile)
+                val outputDsymBundle = File(config.outputFile + ".dSYM")
                 val newOutputFiles = OutputFiles("${File(libraryToAddToCache).name}-cache", config.target, config.produce)
                 val newOutputFileName = File(newOutputFiles.mainFile).name
-                if (!outputFile.renameTo(File(outputFile.parent, newOutputFileName)))
+                if (!outputFile.renameTo(File(outputFile.parent, newOutputFileName))) {
                     outputFile.delete()
+                    outputDsymBundle.delete()
+                }
+                else {
+                    outputDsymBundle.renameTo(File(outputFile.parent, newOutputFileName + ".dSYM"))
+                }
             }
         },
         name = "RenameOutput",
