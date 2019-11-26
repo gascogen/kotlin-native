@@ -61,24 +61,13 @@ class CacheSupport(
                     .toSet()
                     .also { if (!produce.isCache) check(it.isEmpty()) }
         } else {
-            // Put the resulting library in the first cache directory.
-            val cacheDirectory = File(configuration.get(KonanConfigKeys.CACHE_DIRECTORIES)!!.first())
-
             val libraryToAddToCacheFile = File(libraryToAddToCachePath)
             val libraryToAddToCache = getLibrary(libraryToAddToCacheFile)
             val libraryCache = cachedLibraries.getLibraryCache(libraryToAddToCache)
-            if (libraryCache != null)
+            if (libraryCache == null)
+                setOf(libraryToAddToCache)
+            else
                 emptySet()
-            else {
-                val lockFile = java.io.File(cacheDirectory.absolutePath,
-                        "${cachedLibraries.getArtifactName(libraryToAddToCacheFile.name, produce)}.lock")
-                if (!lockFile.createNewFile())
-                    emptySet()
-                else {
-                    lockFile.deleteOnExit()
-                    setOf(libraryToAddToCache)
-                }
-            }
         }
     }
 

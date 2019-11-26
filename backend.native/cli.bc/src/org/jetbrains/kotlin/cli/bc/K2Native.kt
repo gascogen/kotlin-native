@@ -29,6 +29,8 @@ import org.jetbrains.kotlin.metadata.deserialization.BinaryVersion
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.util.profile
 import org.jetbrains.kotlin.utils.KotlinPaths
+import java.nio.file.Files
+import kotlin.random.Random
 
 private class K2NativeCompilerPerformanceManager: CommonCompilerPerformanceManager("Kotlin to Native Compiler")
 class K2Native : CLICompiler<K2NativeCompilerArguments>() {
@@ -115,8 +117,8 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
             with(configuration) {
 
                 put(NODEFAULTLIBS, arguments.nodefaultlibs || !arguments.libraryToAddToCache.isNullOrEmpty())
-                put(NOENDORSEDLIBS, arguments.noendorsedlibs)
-                put(NOSTDLIB, arguments.nostdlib)
+                put(NOENDORSEDLIBS, arguments.noendorsedlibs || !arguments.libraryToAddToCache.isNullOrEmpty())
+                put(NOSTDLIB, arguments.nostdlib || !arguments.libraryToAddToCache.isNullOrEmpty())
                 put(NOPACK, arguments.nopack)
                 put(NOMAIN, arguments.nomain)
                 put(LIBRARY_FILES,
@@ -220,10 +222,10 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
                 val libraryToAddToCache = parseLibraryToAddToCache(arguments, configuration, outputKind)
                 val cacheDirectories = arguments.cacheDirectories.toNonNullList()
                 getOutputForLibraryBeingAddedToCache(arguments, configuration, libraryToAddToCache, cacheDirectories).let {
-                    if (it.isNotEmpty())
+                    if (it != null)
                         put(OUTPUT, it)
                 }
-                put(LIBRARY_TO_ADD_TO_CACHE, libraryToAddToCache)
+                put(LIBRARY_TO_ADD_TO_CACHE, libraryToAddToCache ?: "")
                 put(CACHE_DIRECTORIES, cacheDirectories)
                 put(CACHED_LIBRARIES, parseCachedLibraries(arguments, configuration))
             }
@@ -360,12 +362,12 @@ private fun parseLibraryToAddToCache(
         arguments: K2NativeCompilerArguments,
         configuration: CompilerConfiguration,
         outputKind: CompilerOutputKind
-): String {
-    val input = arguments.libraryToAddToCache ?: ""
+): String? {
+    val input = arguments.libraryToAddToCache
 
-    return if (input != "" && !outputKind.isCache) {
+    return if (input != null && !outputKind.isCache) {
         configuration.report(ERROR, "$ADD_CACHE can't be used when not producing cache")
-        ""
+        null
     } else {
         input
     }
@@ -374,27 +376,29 @@ private fun parseLibraryToAddToCache(
 private fun getOutputForLibraryBeingAddedToCache(
         arguments: K2NativeCompilerArguments,
         configuration: CompilerConfiguration,
-        libraryToAddToCache: String,
+        libraryToAddToCache: String?,
         cacheDirectories: List<String>
-): String {
-    if (libraryToAddToCache.isEmpty()) return ""
+): String? {
+    if (libraryToAddToCache.isNullOrEmpty()) return null
     if (!arguments.outputName.isNullOrEmpty()) {
         configuration.report(ERROR, "$ADD_CACHE already implicitly sets output file name")
         return ""
     }
+    // Put the resulting library in the first cache directory.
     val cacheDirectory = cacheDirectories
             .map {
                 File(it).takeIf { it.isDirectory }
                         ?: run {
                             configuration.report(ERROR, "cache directory $it is not found or not a directory")
-                            return ""
+                            return null
                         }
             }.firstOrNull()
             ?: run {
                 configuration.report(ERROR, "expected at least one cache directory")
-                return ""
+                return null
             }
-    return cacheDirectory.child("${File(libraryToAddToCache).name}-cache").absolutePath
+
+    return cacheDirectory.child("${File(libraryToAddToCache).name}${Random.nextLong()}").absolutePath
 }
 
 fun main(args: Array<String>) = K2Native.main(args)

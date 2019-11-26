@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.konan.target.CompilerOutputKind
 import org.jetbrains.kotlin.psi2ir.Psi2IrConfiguration
 import org.jetbrains.kotlin.psi2ir.Psi2IrTranslator
 import org.jetbrains.kotlin.utils.DFS
+import java.io.File
 import java.util.Collections.emptySet
 
 internal fun moduleValidationCallback(state: ActionState, module: IrModuleFragment, context: Context) {
@@ -262,11 +263,28 @@ internal val linkerPhase = konanUnitPhase(
         description = "Linker"
 )
 
+internal val renameOutputPhase = konanUnitPhase(
+        op = {
+            val libraryToAddToCache = configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE)
+            if ((config.produce == CompilerOutputKind.DYNAMIC_CACHE
+                    || config.produce == CompilerOutputKind.STATIC_CACHE) && !libraryToAddToCache.isNullOrEmpty()) {
+                val outputFile = File(config.outputFile)
+                val newOutputFiles = OutputFiles("${File(libraryToAddToCache).name}-cache", config.target, config.produce)
+                val newOutputFileName = File(newOutputFiles.mainFile).name
+                if (!outputFile.renameTo(File(outputFile.parent, newOutputFileName)))
+                    outputFile.delete()
+            }
+        },
+        name = "RenameOutput",
+        description = "Rename output file for -add-cache option"
+)
+
 internal val linkPhase = namedUnitPhase(
         name = "Link",
         description = "Link stage",
         lower = objectFilesPhase then
-                linkerPhase
+                linkerPhase then
+                renameOutputPhase
 )
 
 internal val allLoweringsPhase = namedIrModulePhase(

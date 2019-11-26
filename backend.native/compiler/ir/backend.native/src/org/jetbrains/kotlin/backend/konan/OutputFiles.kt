@@ -16,7 +16,7 @@ import org.jetbrains.kotlin.konan.util.visibleName
 /**
  * Creates and stores terminal compiler outputs.
  */
-class OutputFiles(outputPath: String?, target: KonanTarget, produce: CompilerOutputKind) {
+class OutputFiles(outputPath: String?, target: KonanTarget, val produce: CompilerOutputKind) {
 
     private val prefix = produce.prefix(target)
     private val suffix = produce.suffix(target)
@@ -33,8 +33,14 @@ class OutputFiles(outputPath: String?, target: KonanTarget, produce: CompilerOut
      * Main compiler's output file.
      */
     val mainFile = outputName
-            .prefixBaseNameAlways(prefix)
+            .prefixBaseNameIfNeeded(prefix)
             .suffixIfNot(suffix)
+
+    private fun String.prefixBaseNameIfNeeded(prefix: String): String {
+        return if (produce == CompilerOutputKind.DYNAMIC_CACHE || produce == CompilerOutputKind.STATIC_CACHE)
+            prefixBaseNameAlways(prefix)
+        else prefixBaseNameIfNot(prefix)
+    }
 
     private fun String.prefixBaseNameAlways(prefix: String): String {
         val file = File(this).absoluteFile
