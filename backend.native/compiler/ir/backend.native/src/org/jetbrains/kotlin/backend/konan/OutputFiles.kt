@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.konan.file.File
 import org.jetbrains.kotlin.konan.target.CompilerOutputKind
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import org.jetbrains.kotlin.konan.util.visibleName
+import kotlin.random.Random
 
 
 /**
@@ -35,6 +36,12 @@ class OutputFiles(outputPath: String?, target: KonanTarget, val produce: Compile
     val mainFile = outputName
             .prefixBaseNameIfNeeded(prefix)
             .suffixIfNot(suffix)
+
+    val mainFileMangled = if (!produce.isCache) mainFile else {
+        (outputName + Random.nextLong().toString())
+                .prefixBaseNameIfNeeded(prefix)
+                .suffixIfNot(suffix)
+    }
 
     private fun String.prefixBaseNameIfNeeded(prefix: String): String {
         return if (produce == CompilerOutputKind.DYNAMIC_CACHE || produce == CompilerOutputKind.STATIC_CACHE)

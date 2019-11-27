@@ -398,7 +398,7 @@ private fun getOutputForLibraryBeingAddedToCache(
                 return null
             }
 
-    return cacheDirectory.child("${File(libraryToAddToCache).name}${Random.nextLong()}").absolutePath
+    return cacheDirectory.child("${File(libraryToAddToCache).name}-cache").absolutePath
 }
 
 fun main(args: Array<String>) = K2Native.main(args)

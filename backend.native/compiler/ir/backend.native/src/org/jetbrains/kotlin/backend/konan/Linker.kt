@@ -58,12 +58,15 @@ internal class Linker(val context: Context) {
     private fun runLinker(objectFiles: List<ObjectFile>,
                           includedBinaries: List<String>,
                           libraryProvidedLinkerFlags: List<String>): ExecutableFile? {
-        val frameworkLinkerArgs: List<String>
+        val additionalLinkerArgs: List<String>
         val executable: String
 
         if (context.config.produce != CompilerOutputKind.FRAMEWORK) {
-            frameworkLinkerArgs = emptyList()
-            executable = context.config.outputFile
+            if (context.config.produce == CompilerOutputKind.DYNAMIC_CACHE)
+                additionalLinkerArgs = listOf("-install_name", context.config.outputFiles.mainFile)
+            else
+                additionalLinkerArgs = emptyList()
+            executable = context.config.outputFiles.mainFileMangled
         } else {
             val framework = File(context.config.outputFile)
             val dylibName = framework.name.removeSuffix(".framework")
@@ -74,7 +77,7 @@ internal class Linker(val context: Context) {
                 Family.OSX -> "Versions/A/$dylibName"
                 else -> error(target)
             }
-            frameworkLinkerArgs = listOf("-install_name", "@rpath/${framework.name}/$dylibRelativePath")
+            additionalLinkerArgs = listOf("-install_name", "@rpath/${framework.name}/$dylibRelativePath")
             val dylibPath = framework.child(dylibRelativePath)
             dylibPath.parentFile.mkdirs()
             executable = dylibPath.absolutePath
@@ -92,9 +95,9 @@ internal class Linker(val context: Context) {
                     linkerArgs = asLinkerArgs(config.getNotNull(KonanConfigKeys.LINKER_ARGS)) +
                             BitcodeEmbedding.getLinkerOptions(context.config) +
                             caches.dynamic +
-                            libraryProvidedLinkerFlags + frameworkLinkerArgs,
+                            libraryProvidedLinkerFlags + additionalLinkerArgs,
                     optimize = optimize, debug = debug, kind = linkerOutput,
-                    outputDsymBundle = context.config.outputFile + ".dSYM",
+                    outputDsymBundle = context.config.outputFiles.mainFileMangled + ".dSYM",
                     needsProfileLibrary = needsProfileLibrary).forEach {
                 it.logWith(context::log)
                 it.execute()
