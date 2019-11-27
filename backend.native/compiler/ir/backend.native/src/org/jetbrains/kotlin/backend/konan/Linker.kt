@@ -36,6 +36,22 @@ internal class Linker(val context: Context) {
         val includedBinaries = nativeDependencies.map { it.includedPaths }.flatten()
         val libraryProvidedLinkerFlags = nativeDependencies.map { it.linkerOpts }.flatten()
         runLinker(objectFiles, includedBinaries, libraryProvidedLinkerFlags)
+        renameOutput()
+    }
+
+    private fun renameOutput() {
+        val libraryToAddToCache = context.configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE)
+        if (context.config.produce.isCache && !libraryToAddToCache.isNullOrEmpty()) {
+            val outputFiles = context.config.outputFiles
+            val outputFile = java.io.File(outputFiles.mainFileMangled)
+            val outputDsymBundle = java.io.File(outputFiles.mainFileMangled + ".dSYM")
+            if (outputFile.renameTo(java.io.File(outputFiles.mainFile)))
+                outputDsymBundle.renameTo(java.io.File(outputFiles.mainFile + ".dSYM"))
+            else {
+                outputFile.delete()
+                outputDsymBundle.delete()
+            }
+        }
     }
 
     private fun asLinkerArgs(args: List<String>): List<String> {

@@ -263,32 +263,11 @@ internal val linkerPhase = konanUnitPhase(
         description = "Linker"
 )
 
-internal val renameOutputPhase = konanUnitPhase(
-        op = {
-            val libraryToAddToCache = configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE)
-            if ((config.produce == CompilerOutputKind.DYNAMIC_CACHE
-                    || config.produce == CompilerOutputKind.STATIC_CACHE) && !libraryToAddToCache.isNullOrEmpty()) {
-                val outputFile = File(config.outputFiles.mainFileMangled)
-                val outputDsymBundle = File(config.outputFiles.mainFileMangled + ".dSYM")
-                if (!outputFile.renameTo(File(config.outputFiles.mainFile))) {
-                    outputFile.delete()
-                    outputDsymBundle.delete()
-                }
-                else {
-                    outputDsymBundle.renameTo(File(config.outputFiles.mainFile + ".dSYM"))
-                }
-            }
-        },
-        name = "RenameOutput",
-        description = "Rename output file for -add-cache option"
-)
-
 internal val linkPhase = namedUnitPhase(
         name = "Link",
         description = "Link stage",
         lower = objectFilesPhase then
-                linkerPhase then
-                renameOutputPhase
+                linkerPhase
 )
 
 internal val allLoweringsPhase = namedIrModulePhase(

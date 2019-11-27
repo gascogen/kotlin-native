@@ -40,13 +40,19 @@ class OutputFiles(outputPath: String?, target: KonanTarget, val produce: Compile
     val mainFileMangled = if (!produce.isCache) mainFile else {
         (outputName + Random.nextLong().toString())
                 .prefixBaseNameIfNeeded(prefix)
-                .suffixIfNot(suffix)
+                .suffixIfNeeded(suffix)
     }
 
     private fun String.prefixBaseNameIfNeeded(prefix: String): String {
-        return if (produce == CompilerOutputKind.DYNAMIC_CACHE || produce == CompilerOutputKind.STATIC_CACHE)
+        return if (produce.isCache)
             prefixBaseNameAlways(prefix)
         else prefixBaseNameIfNot(prefix)
+    }
+
+    private fun String.suffixIfNeeded(prefix: String): String {
+        return if (produce.isCache)
+            suffixAlways(prefix)
+        else suffixIfNot(prefix)
     }
 
     private fun String.prefixBaseNameAlways(prefix: String): String {
@@ -56,4 +62,5 @@ class OutputFiles(outputPath: String?, target: KonanTarget, val produce: Compile
         return "$directory/$prefix$name"
     }
 
+    private fun String.suffixAlways(suffix: String) = "$this$suffix"
 }
