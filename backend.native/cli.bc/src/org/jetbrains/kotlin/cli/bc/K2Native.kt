@@ -29,8 +29,6 @@ import org.jetbrains.kotlin.metadata.deserialization.BinaryVersion
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.util.profile
 import org.jetbrains.kotlin.utils.KotlinPaths
-import java.nio.file.Files
-import kotlin.random.Random
 
 private class K2NativeCompilerPerformanceManager: CommonCompilerPerformanceManager("Kotlin to Native Compiler")
 class K2Native : CLICompiler<K2NativeCompilerArguments>() {
@@ -220,12 +218,10 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
 
                 put(LIBRARIES_TO_CACHE, parseLibrariesToCache(arguments, configuration, outputKind))
                 val libraryToAddToCache = parseLibraryToAddToCache(arguments, configuration, outputKind)
+                if (libraryToAddToCache != null && !arguments.outputName.isNullOrEmpty())
+                    configuration.report(ERROR, "$ADD_CACHE already implicitly sets output file name")
                 val cacheDirectories = arguments.cacheDirectories.toNonNullList()
-                getOutputForLibraryBeingAddedToCache(arguments, configuration, libraryToAddToCache, cacheDirectories).let {
-                    if (it != null)
-                        put(OUTPUT, it)
-                }
-                put(LIBRARY_TO_ADD_TO_CACHE, libraryToAddToCache ?: "")
+                libraryToAddToCache?.let { put(LIBRARY_TO_ADD_TO_CACHE, it) }
                 put(CACHE_DIRECTORIES, cacheDirectories)
                 put(CACHED_LIBRARIES, parseCachedLibraries(arguments, configuration))
             }
@@ -371,34 +367,6 @@ private fun parseLibraryToAddToCache(
     } else {
         input
     }
-}
-
-private fun getOutputForLibraryBeingAddedToCache(
-        arguments: K2NativeCompilerArguments,
-        configuration: CompilerConfiguration,
-        libraryToAddToCache: String?,
-        cacheDirectories: List<String>
-): String? {
-    if (libraryToAddToCache.isNullOrEmpty()) return null
-    if (!arguments.outputName.isNullOrEmpty()) {
-        configuration.report(ERROR, "$ADD_CACHE already implicitly sets output file name")
-        return ""
-    }
-    // Put the resulting library in the first cache directory.
-    val cacheDirectory = cacheDirectories
-            .map {
-                File(it).takeIf { it.isDirectory }
-                        ?: run {
-                            configuration.report(ERROR, "cache directory $it is not found or not a directory")
-                            return null
-                        }
-            }.firstOrNull()
-            ?: run {
-                configuration.report(ERROR, "expected at least one cache directory")
-                return null
-            }
-
-    return cacheDirectory.child("${File(libraryToAddToCache).name}-cache").absolutePath
 }
 
 fun main(args: Array<String>) = K2Native.main(args)

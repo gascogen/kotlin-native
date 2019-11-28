@@ -72,14 +72,6 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
 
     internal val produceStaticFramework get() = configuration.getBoolean(KonanConfigKeys.STATIC_FRAMEWORK)
 
-    val outputFiles = OutputFiles(configuration.get(KonanConfigKeys.OUTPUT), target, produce)
-    val tempFiles = TempFiles(outputFiles.outputName, configuration.get(KonanConfigKeys.TEMPORARY_FILES_DIR))
-
-    val outputFile = outputFiles.mainFile
-
-    val moduleId: String
-        get() = configuration.get(KonanConfigKeys.MODULE_NAME) ?: File(outputFiles.outputName).name
-
     internal val purgeUserLibs: Boolean
         get() = configuration.getBoolean(KonanConfigKeys.PURGE_USER_LIBS)
 
@@ -158,6 +150,38 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
 
     internal val librariesToCache: Set<KotlinLibrary>
         get() = cacheSupport.librariesToCache
+
+    private fun tryGetOutputForCache(): String? {
+        val libraryToAddToCache = configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE) ?: return null
+        // Put the resulting library in the first cache directory.
+        val cacheDirectory = configuration.get(KonanConfigKeys.CACHE_DIRECTORIES)!!
+                .map {
+                    File(it).takeIf { it.isDirectory }
+                            ?: run {
+                                configuration.report(ERROR, "cache directory $it is not found or not a directory")
+                                return null
+                            }
+                }.firstOrNull()
+                ?: run {
+                    configuration.report(ERROR, "expected at least one cache directory")
+                    return null
+                }
+        val library = resolvedLibraries.getFullList().single { it.libraryFile.absolutePath == libraryToAddToCache }
+        return cacheDirectory.child(cachedLibraries.getCachedLibraryName(library)).absolutePath
+    }
+
+    val outputFiles by lazy {
+        OutputFiles(configuration.get(KonanConfigKeys.OUTPUT) ?: tryGetOutputForCache(), target, produce)
+    }
+
+    val tempFiles by lazy {
+        TempFiles(outputFiles.outputName, configuration.get(KonanConfigKeys.TEMPORARY_FILES_DIR))
+    }
+
+    val outputFile get() = outputFiles.mainFile
+
+    val moduleId: String
+        get() = configuration.get(KonanConfigKeys.MODULE_NAME) ?: File(outputFiles.outputName).name
 
     val infoArgsOnly = configuration.kotlinSourceRoots.isEmpty()
             && configuration[KonanConfigKeys.INCLUDED_LIBRARIES].isNullOrEmpty()
