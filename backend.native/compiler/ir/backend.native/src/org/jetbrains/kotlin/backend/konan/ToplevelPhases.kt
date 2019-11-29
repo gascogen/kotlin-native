@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.phaser.*
 import org.jetbrains.kotlin.backend.common.serialization.DescriptorTable
+import org.jetbrains.kotlin.backend.common.serialization.expectDescriptorToSymbol
 import org.jetbrains.kotlin.backend.common.serialization.metadata.KlibMetadataMonolithicSerializer
 import org.jetbrains.kotlin.backend.konan.descriptors.isForwardDeclarationModule
 import org.jetbrains.kotlin.backend.konan.descriptors.konanLibrary
@@ -172,7 +173,8 @@ internal val psiToIrPhase = konanUnitPhase(
                     generatorContext.irBuiltIns,
                     symbolTable,
                     forwardDeclarationsModuleDescriptor,
-                    exportedDependencies
+                    exportedDependencies,
+                    expectDescriptorToSymbol
             )
 
             var dependenciesCount = 0
@@ -194,6 +196,9 @@ internal val psiToIrPhase = konanUnitPhase(
                 if (dependencies.size == dependenciesCount) break
                 dependenciesCount = dependencies.size
             }
+
+
+            deserializer.initializeExpectActualLinker()
 
             val functionIrClassFactory = BuiltInFictitiousFunctionIrClassFactory(
                     symbolTable, generatorContext.irBuiltIns, reflectionTypes)
@@ -249,9 +254,11 @@ internal val serializerPhase = konanUnitPhase(
         op = {
             val mppKlibs = config.configuration.get(CommonConfigurationKeys.MPP_KLIBS)?:false
             val descriptorTable = DescriptorTable()
+
             serializedIr = KonanIrModuleSerializer(
-                this, irModule!!.irBuiltins, descriptorTable, !mppKlibs
+                this, irModule!!.irBuiltins, descriptorTable, skipExpects = !mppKlibs
             ).serializedIrModule(irModule!!)
+
             val serializer = KlibMetadataMonolithicSerializer(
                 this.config.configuration.languageVersionSettings,
                 config.configuration.get(CommonConfigurationKeys.METADATA_VERSION)!!,

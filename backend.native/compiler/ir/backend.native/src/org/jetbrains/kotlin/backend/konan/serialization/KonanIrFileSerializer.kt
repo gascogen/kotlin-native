@@ -9,10 +9,10 @@ import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.util.hasAnnotation
 
 class KonanIrFileSerializer(
-        logger: LoggingContext,
-        declarationTable: DeclarationTable,
-        skipExpects: Boolean,
-        bodiesOnlyForInlines: Boolean = false
+    logger: LoggingContext,
+    declarationTable: DeclarationTable,
+    skipExpects: Boolean,
+    bodiesOnlyForInlines: Boolean = false
 ): IrFileSerializer(logger, declarationTable, skipExpects = skipExpects, bodiesOnlyForInlines = bodiesOnlyForInlines) {
 
     override fun backendSpecificExplicitRoot(declaration: IrFunction) =
