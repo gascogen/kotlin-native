@@ -45,12 +45,12 @@ internal class Linker(val context: Context) {
             val outputFiles = context.config.outputFiles
             val outputFile = java.io.File(outputFiles.mainFileMangled)
             val outputDsymBundle = java.io.File(outputFiles.mainFileMangled + ".dSYM")
-            if (outputFile.renameTo(java.io.File(outputFiles.mainFile)))
-                outputDsymBundle.renameTo(java.io.File(outputFiles.mainFile + ".dSYM"))
-            else {
+            // This is only atomic per operation, so there might be an outcome where we have dSYM from other
+            // compiler run but both dSYM's must be identical, so it doesn't matter which one to choose.
+            if (!outputFile.renameTo(java.io.File(outputFiles.mainFile)))
                 outputFile.delete()
-                outputDsymBundle.delete()
-            }
+            if (!outputDsymBundle.renameTo(java.io.File(outputFiles.mainFile + ".dSYM")))
+                outputDsymBundle.deleteRecursively()
         }
     }
 

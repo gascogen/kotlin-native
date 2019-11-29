@@ -35,7 +35,7 @@ class OutputFiles(outputPath: String?, target: KonanTarget, val produce: Compile
      */
     val mainFile = outputName
             .prefixBaseNameIfNeeded(prefix)
-            .suffixIfNot(suffix)
+            .suffixIfNeeded(suffix)
 
     val mainFileMangled = if (!produce.isCache) mainFile else {
         (outputName + Random.nextLong().toString())
