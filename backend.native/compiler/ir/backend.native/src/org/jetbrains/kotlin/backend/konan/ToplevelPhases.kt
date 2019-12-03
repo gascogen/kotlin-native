@@ -5,7 +5,6 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.phaser.*
 import org.jetbrains.kotlin.backend.common.serialization.DescriptorTable
-import org.jetbrains.kotlin.backend.common.serialization.expectDescriptorToSymbol
 import org.jetbrains.kotlin.backend.common.serialization.metadata.KlibMetadataMonolithicSerializer
 import org.jetbrains.kotlin.backend.konan.descriptors.isForwardDeclarationModule
 import org.jetbrains.kotlin.backend.konan.descriptors.konanLibrary
@@ -18,10 +17,12 @@ import org.jetbrains.kotlin.backend.konan.serialization.*
 import org.jetbrains.kotlin.cli.common.messages.AnalyzerWithCompilerReport
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.languageVersionSettings
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.konan.isKonanStdlib
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.DeclarationStubGenerator
 import org.jetbrains.kotlin.ir.util.SymbolTable
 import org.jetbrains.kotlin.ir.util.addChild
@@ -166,15 +167,13 @@ internal val psiToIrPhase = konanUnitPhase(
             // Note: using [llvmModuleSpecification] since this phase produces IR for generating single LLVM module.
 
             val exportedDependencies = (getExportedDependencies() + modulesWithoutDCE).distinct()
-
             val deserializer = KonanIrLinker(
                     moduleDescriptor,
                     this as LoggingContext,
                     generatorContext.irBuiltIns,
                     symbolTable,
                     forwardDeclarationsModuleDescriptor,
-                    exportedDependencies,
-                    expectDescriptorToSymbol
+                    exportedDependencies
             )
 
             var dependenciesCount = 0
@@ -210,7 +209,9 @@ internal val psiToIrPhase = konanUnitPhase(
             )
             val irProviders = listOf(irProviderForInteropStubs, functionIrClassFactory, deserializer, stubGenerator)
             stubGenerator.setIrProviders(irProviders)
-            val module = translator.generateModuleFragment(generatorContext, environment.getSourceFiles(), irProviders)
+
+            expectDescriptorToSymbol = mutableMapOf<DeclarationDescriptor, IrSymbol>()
+            val module = translator.generateModuleFragment(generatorContext, environment.getSourceFiles(), irProviders, expectDescriptorToSymbol)
 
             if (this.stdlibModule in modulesWithoutDCE) {
                 functionIrClassFactory.buildAllClasses()
@@ -252,11 +253,11 @@ internal val copyDefaultValuesToActualPhase = konanUnitPhase(
 
 internal val serializerPhase = konanUnitPhase(
         op = {
-            val mppKlibs = config.configuration.get(CommonConfigurationKeys.MPP_KLIBS)?:false
+            val mppKlibs = config.configuration.get(CommonConfigurationKeys.KLIB_MPP)?:false
             val descriptorTable = DescriptorTable()
 
             serializedIr = KonanIrModuleSerializer(
-                this, irModule!!.irBuiltins, descriptorTable, skipExpects = !mppKlibs
+                this, irModule!!.irBuiltins, descriptorTable, expectDescriptorToSymbol, skipExpects = !mppKlibs
             ).serializedIrModule(irModule!!)
 
             val serializer = KlibMetadataMonolithicSerializer(
