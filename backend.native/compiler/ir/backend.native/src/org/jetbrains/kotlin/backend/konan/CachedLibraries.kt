@@ -50,8 +50,6 @@ internal class CachedLibraries(
         cache?.let { library to it }
     }.toMap()
 
-    fun getCachedLibraryName(library: KotlinLibrary): String = "${library.uniqueName}-cache"
-
     fun getArtifactName(baseName: String, kind: CompilerOutputKind) =
             "${kind.prefix(target)}$baseName${kind.suffix(target)}"
 
@@ -73,5 +71,9 @@ internal class CachedLibraries(
             Cache.Kind.STATIC -> false
             Cache.Kind.DYNAMIC -> true
         }
+    }
+
+    companion object {
+        fun getCachedLibraryName(library: KotlinLibrary): String = "${library.uniqueName}-cache"
     }
 }

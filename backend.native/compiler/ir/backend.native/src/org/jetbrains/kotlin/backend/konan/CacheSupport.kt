@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.library.resolver.KotlinLibraryResolveResult
 
 class CacheSupport(
-        configuration: CompilerConfiguration,
+        val configuration: CompilerConfiguration,
         resolvedLibraries: KotlinLibraryResolveResult,
         target: KonanTarget,
         produce: CompilerOutputKind
@@ -22,6 +22,21 @@ class CacheSupport(
 
     // TODO: consider using [FeaturedLibraries.kt].
     private val fileToLibrary = allLibraries.associateBy { it.libraryFile }
+
+    private val implicitCacheDirectories = configuration.get(KonanConfigKeys.CACHE_DIRECTORIES)!!
+            .map {
+                File(it).takeIf { it.isDirectory }
+                        ?: configuration.reportCompilationError("cache directory $it is not found or not a directory")
+            }
+
+    internal fun tryGetImplicitOutput(): String? {
+        val libraryToAddToCache = configuration.get(KonanConfigKeys.LIBRARY_TO_ADD_TO_CACHE) ?: return null
+        // Put the resulting library in the first cache directory.
+        val cacheDirectory = implicitCacheDirectories.firstOrNull() ?: return null
+        val library = allLibraries.single { it.libraryFile.absolutePath == libraryToAddToCache }
+        return cacheDirectory.child(CachedLibraries.getCachedLibraryName(library)).absolutePath
+    }
+
 
     internal val cachedLibraries: CachedLibraries = run {
         val explicitCacheFiles = configuration.get(KonanConfigKeys.CACHED_LIBRARIES)!!
@@ -32,12 +47,6 @@ class CacheSupport(
 
             library to cachePath
         }
-
-        val implicitCacheDirectories = configuration.get(KonanConfigKeys.CACHE_DIRECTORIES)!!
-                .map {
-                    File(it).takeIf { it.isDirectory }
-                            ?: configuration.reportCompilationError("cache directory $it is not found or not a directory")
-                }
 
         CachedLibraries(
                 target = target,
