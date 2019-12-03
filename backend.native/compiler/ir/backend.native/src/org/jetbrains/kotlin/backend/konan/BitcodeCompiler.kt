@@ -74,6 +74,8 @@ internal class BitcodeCompiler(val context: Context) {
                 addNonEmpty(configurables.clangDynamicFlags)
             }
             addNonEmpty(profilingFlags)
+            if (context.config.produce.isCache)
+                add(context.config.exceptionsSupportNativeLibrary)
         }
         if (configurables is AppleConfigurables) {
             targetTool("clang++", *flags.toTypedArray(), file, "-o", objectFile)
