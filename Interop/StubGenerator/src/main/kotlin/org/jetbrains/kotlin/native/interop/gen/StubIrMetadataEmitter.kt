@@ -55,7 +55,8 @@ internal class ModuleMetadataEmitter(
             val classes: MutableList<KmClass> = mutableListOf(),
             val properties: MutableList<KmProperty> = mutableListOf(),
             val typeAliases: MutableList<KmTypeAlias> = mutableListOf(),
-            val functions: MutableList<KmFunction> = mutableListOf()
+            val functions: MutableList<KmFunction> = mutableListOf(),
+            val constructors: MutableList<KmConstructor> = mutableListOf()
     )
 
     private val visitor = object : StubIrVisitor<VisitingContext, Unit> {
@@ -78,9 +79,10 @@ internal class ModuleMetadataEmitter(
                     is ClassStub.Enum -> element.classifier.fqNameSerialized
                     is ClassStub.Companion -> "Companion"
                 }
-                typeAliases += classVisitingContext.typeAliases
-                properties += classVisitingContext.properties
-                functions += classVisitingContext.functions
+                typeAliases += classVisitingContext.typeAliases.toList()
+                properties += classVisitingContext.properties.toList()
+                functions += classVisitingContext.functions.toList()
+                constructors += classVisitingContext.constructors.toList()
                 // TODO: Add names of nested classes
             }.let(data.classes::add)
         }
@@ -126,7 +128,10 @@ internal class ModuleMetadataEmitter(
         }
 
         override fun visitConstructor(constructorStub: ConstructorStub, data: VisitingContext) {
-            // TODO("not implemented")
+            KmConstructor(constructorStub.flags).apply {
+                constructorStub.parameters.mapTo(valueParameters, FunctionParameterStub::map)
+                constructorStub.annotations.mapTo(annotations, AnnotationStub::map)
+            }.let(data.constructors::add)
         }
 
         override fun visitPropertyAccessor(propertyAccessor: PropertyAccessor, data: VisitingContext) {
