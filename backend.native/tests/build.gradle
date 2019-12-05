@@ -2277,7 +2277,7 @@ task extend_exception(type: KonanLocalTest) {
 }
 
 standaloneTest("check_stacktrace_format") {
-    disabled = !isAppleTarget(project) || project.globalTestArgs.contains('-opt')
+    disabled = !isAppleTarget(project) || project.globalTestArgs.contains('-opt') || (project.testTarget == 'ios_arm64')
     flags = ['-g']
     source = "runtime/exceptions/check_stacktrace_format.kt"
 }
@@ -4054,8 +4054,8 @@ task buildKonanTests { t ->
 if (PlatformInfo.getTarget(project) == KonanTarget.IOS_ARM64.INSTANCE) {
     project.tasks
             .matching { it instanceof KonanTestExecutable }
-            .forEach {
-                ExecutorServiceKt.xcodeBuild((KonanTestExecutable) it)
+            .all {
+                ExecutorServiceKt.configureXcodeBuild((KonanTestExecutable) it)
             }
     // Exclude tasks that can not be run on device
     project.tasks
@@ -4065,5 +4065,5 @@ if (PlatformInfo.getTarget(project) == KonanTarget.IOS_ARM64.INSTANCE) {
                     it instanceof KonanDynamicTest ||
                     it instanceof KonanLinkTest
             }
-            .forEach { it.enabled = false }
+            .all { it.enabled = false }
 }

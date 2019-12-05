@@ -21,7 +21,7 @@ interface KonanTestExecutable : Task {
 
     /**
      * Action that configures task or does some workload before the test will be built.
-     * Depending on the test task impelmentation this action is done before the build task
+     * Depending on the test task implementation this action is done before the build task
      * or as its `doFirst` action.
      */
     var doBeforeBuild: Action<in Task>?

@@ -331,8 +331,9 @@ private fun deviceLauncher(project: Project) = object : ExecutorService {
     override fun execute(action: Action<in ExecSpec>): ExecResult? {
         val udid = targetUDID()
         println("Found device UDID: $udid")
-        install(udid, "build/KonanTestLauncher.ipa")
-        val commands = startDebugServer(udid, "org.jetbrains.kotlin.KonanTestLauncher")
+        install(udid, xcProject.resolve("build/KonanTestLauncher.ipa").toString())
+        val bundleId = "org.jetbrains.kotlin.KonanTestLauncher"
+        val commands = startDebugServer(udid, bundleId)
                 .split("\n")
                 .filter { it.isNotBlank() }
                 .flatMap { listOf("-o", it) }
@@ -350,29 +351,35 @@ private fun deviceLauncher(project: Project) = object : ExecutorService {
                     "-o" + "get_exit_code" +
                     "-k" + "get_exit_code" +
                     "-k" + "exit -1"
+            // A test task that uses project.exec { } sets the stdOut to parse the result,
+            // but the test executable is being run under debugger that has its own output mixed with the
+            // output from the test. Save the stdOut from the test to write the parsed output to it.
             savedOut = execSpec.standardOutput
             execSpec.standardOutput = out
         }
         out.toString()
                 .also { if (project.verboseTest) println(it) }
                 .split("\n")
-                .run { drop(indexOfFirst { s -> s.startsWith("(lldb) process launch") } + 1) }
-                .run {
-                    dropLast(size - 1 -
-                            indexOfFirst { it.matches(".*Process [0-9]* exited with status .*".toRegex()) })
-                }.joinToString("\n") {
-                    it.replace("Process [0-9]* exited with status .*".toRegex(), "")
+                .dropWhile { s -> !s.startsWith("(lldb) process launch") }
+                .drop(1)  // drop 'process launch' also
+                .dropLastWhile { ! it.matches(".*Process [0-9]* exited with status .*".toRegex()) }
+                .joinToString("\n") {
+                    it.replace(".*Process [0-9]* exited with status .*".toRegex(), "")
                             .replace("\r", "")   // TODO: investigate: where does the \r comes from
                 }
                 .also {
                     savedOut?.write(it.toByteArray())
                 }
 
-        uninstall(udid, "org.jetbrains.kotlin.KonanTestLauncher")
+        uninstall(udid, bundleId)
         kill()
         return result
     }
 
+    /*
+     * This script kills the target process in case it has been stopped,
+     * and exists lldb with the same exit code as a target process.
+     */
     private fun pythonScript(): String = xcProject.resolve("lldb_cmd.py").toFile().run {
         writeText( // language=Python
                 """
@@ -458,38 +465,39 @@ private fun deviceLauncher(project: Project) = object : ExecutorService {
             it.commandLine = listOf(idb, "debugserver", "start", "--udid", udid, bundleId)
             it.standardOutput = out
             it.errorOutput = out
+            it.isIgnoreExitValue = true
         }
         check(result.exitValue == 0) { "Failed to start debug server: $out" }
         return out.toString()
     }
 }
 
-fun KonanTestExecutable.xcodeBuild() {
+fun KonanTestExecutable.configureXcodeBuild() {
     this.doBeforeRun = Action {
         val signIdentity = project.findProperty("sign_identity") as? String ?: "iPhone Developer"
         val developmentTeam = project.findProperty("development_team") as? String
+        requireNotNull(developmentTeam) { "Specify '-Pdevelopment_team=' with the your team id" }
         val xcProject = Paths.get(project.testOutputRoot, "launcher")
 
         val shellScript: String = // language=Bash
                 mutableListOf("""
+                        set -x
                         # Copy executable to the build dir.
                         COPY_TO="${"$"}TARGET_BUILD_DIR/${"$"}EXECUTABLE_PATH"
-                        cp "${"$"}PROJECT_DIR/KonanTestLauncher/build/${"$"}TARGET_NAME.kexe" "${"$"}COPY_TO"
+                        cp "${project.file(executable).absolutePath}" "${"$"}COPY_TO"
                         # copy dSYM if it exists
-                        DSYM_DIR="${"$"}PROJECT_DIR/KonanTestLauncher/build/${"$"}TARGET_NAME.kexe.dSYM"
+                        DSYM_DIR="${project.file("$executable.dSYM").absolutePath}"
                         if [ -d "${"$"}DSYM_DIR" ]; then
                             cp -r "${"$"}DSYM_DIR" "${"$"}TARGET_BUILD_DIR/${"$"}EXECUTABLE_FOLDER_PATH/"
                         fi
                     """.trimIndent()).also {
-                    when (this) {
-                        is FrameworkTest -> {
-                            // Create a Frameworks folder inside the build dir.
-                            it += "mkdir -p \"\$TARGET_BUILD_DIR/\$FRAMEWORKS_FOLDER_PATH\""
-                            // Copy each framework to the Frameworks dir.
-                            it += frameworkNames.map { name ->
-                                "cp -r \"$testOutput/$testName/${project.testTarget.name}/$name.framework\" " +
-                                        "\"\$TARGET_BUILD_DIR/\$FRAMEWORKS_FOLDER_PATH/$name.framework\""
-                            }
+                    if (this is FrameworkTest) {
+                        // Create a Frameworks folder inside the build dir.
+                        it += "mkdir -p \"\$TARGET_BUILD_DIR/\$FRAMEWORKS_FOLDER_PATH\""
+                        // Copy each framework to the Frameworks dir.
+                        it += frameworkNames.map { name ->
+                            "cp -r \"$testOutput/$testName/${project.testTarget.name}/$name.framework\" " +
+                                    "\"\$TARGET_BUILD_DIR/\$FRAMEWORKS_FOLDER_PATH/$name.framework\""
                         }
                     }
                 }.joinToString(separator = "\\n") { it.replace("\"", "\\\"") }
@@ -514,16 +522,6 @@ fun KonanTestExecutable.xcodeBuild() {
                     writeText(text)
                 }
 
-        // Copy binary and dSYMs to the xcode project build dir.
-        xcProject.resolve("KonanTestLauncher/build/").let {
-            Files.createDirectories(it)
-            Files.copy(project.file(executable).toPath(), it.resolve("KonanTestLauncher.kexe"),
-                    StandardCopyOption.REPLACE_EXISTING)
-            it.resolve("KonanTestLauncher.kexe.dSYM")
-                    .toFile()
-                    .takeIf { f -> f.exists() }
-                    ?.let { file -> project.file("$executable.dSYM").copyRecursively(file, true) }
-        }
         val sdk = when (project.testTarget) {
             KonanTarget.IOS_ARM32, KonanTarget.IOS_ARM64 -> Xcode.current.iphoneosSdk
             else -> error("Unsupported target: ${project.testTarget}")
