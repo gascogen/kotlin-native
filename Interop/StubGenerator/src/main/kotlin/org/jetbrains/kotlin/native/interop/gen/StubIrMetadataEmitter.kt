@@ -60,7 +60,29 @@ internal class ModuleMetadataEmitter(
 
     private val visitor = object : StubIrVisitor<VisitingContext, Unit> {
         override fun visitClass(element: ClassStub, data: VisitingContext) {
-            // TODO("not implemented")
+            if (element is ClassStub.Companion) {
+                println("Skipping Companion")
+                return
+            }
+            val classVisitingContext = data.copy(
+                    container = element,
+                    uniqIds = data.uniqIds.createChild("TODO"),
+                    classes = data.classes
+            )
+            element.children.forEach { it.accept(this, classVisitingContext) }
+            KmClass().apply {
+                element.annotations.mapTo(annotations, AnnotationStub::map)
+                flags = element.flags
+                name = when (element) {
+                    is ClassStub.Simple -> element.classifier.fqNameSerialized
+                    is ClassStub.Enum -> element.classifier.fqNameSerialized
+                    is ClassStub.Companion -> "Companion"
+                }
+                typeAliases += classVisitingContext.typeAliases
+                properties += classVisitingContext.properties
+                functions += classVisitingContext.functions
+                // TODO: Add names of nested classes
+            }.let(data.classes::add)
         }
 
         override fun visitTypealias(element: TypealiasStub, data: VisitingContext) {
@@ -117,15 +139,18 @@ internal class ModuleMetadataEmitter(
     }
 }
 
+private fun flagsOfNotNull(vararg flags: Flag?): Flags =
+        flagsOf(*listOfNotNull(*flags).toTypedArray())
+
 private val FunctionStub.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.Common.IS_PUBLIC,
             Flag.Function.IS_EXTERNAL,
             Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() },
             Flag.IS_FINAL.takeIf { modality == MemberStubModality.FINAL },
             Flag.IS_OPEN.takeIf { modality == MemberStubModality.OPEN },
             Flag.IS_ABSTRACT.takeIf { modality == MemberStubModality.ABSTRACT }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val Classifier.fqNameSerialized: String
     get() = buildString {
@@ -138,7 +163,7 @@ private val Classifier.fqNameSerialized: String
     }
 
 private val PropertyStub.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.IS_PUBLIC,
             Flag.Property.IS_DECLARATION,
             Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() },
@@ -158,7 +183,7 @@ private val PropertyStub.flags: Flags
                 is PropertyStub.Kind.Val -> null
                 is PropertyStub.Kind.Var -> Flag.Property.HAS_SETTER
             }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val PropertyStub.getterFlags: Flags
     get() = when (kind) {
@@ -168,39 +193,52 @@ private val PropertyStub.getterFlags: Flags
     }
 
 private val PropertyAccessor.Getter.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() },
             Flag.IS_PUBLIC,
             Flag.IS_FINAL,
             Flag.PropertyAccessor.IS_EXTERNAL.takeIf { this is PropertyAccessor.Getter.ExternalGetter }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val PropertyStub.setterFlags: Flags
     get() = if (kind !is PropertyStub.Kind.Var) flagsOf()
     else kind.setter.flags
 
 private val PropertyAccessor.Setter.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() },
             Flag.IS_PUBLIC,
             Flag.IS_FINAL,
             Flag.PropertyAccessor.IS_EXTERNAL.takeIf { this is PropertyAccessor.Setter.ExternalSetter }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val StubType.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.Type.IS_NULLABLE.takeIf { nullable }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val TypealiasStub.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.IS_PUBLIC
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
 
 private val FunctionParameterStub.flags: Flags
-    get() = listOfNotNull(
+    get() = flagsOfNotNull(
             Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() }
-    ).let { flagsOf(*it.toTypedArray()) }
+    )
+
+private val ClassStub.flags: Flags
+    get() = flagsOfNotNull(
+            Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() },
+            Flag.IS_PUBLIC,
+            Flag.IS_OPEN.takeIf { this is ClassStub.Simple && this.modality == ClassStubModality.OPEN },
+            Flag.Class.IS_COMPANION_OBJECT.takeIf { this is ClassStub.Companion },
+            Flag.Class.IS_CLASS.takeIf { this is ClassStub.Simple },
+            Flag.Class.IS_ENUM_CLASS.takeIf { this is ClassStub.Enum }
+    )
+
+private fun String.mapToAnnotationArgument() =
+        KmAnnotationArgument.StringValue(this)
 
 private fun AnnotationStub.map(): KmAnnotation {
     val args = when (this) {
@@ -210,11 +248,14 @@ private fun AnnotationStub.map(): KmAnnotation {
         is AnnotationStub.ObjC.Factory -> TODO()
         AnnotationStub.ObjC.Consumed -> TODO()
         is AnnotationStub.ObjC.Constructor -> TODO()
-        is AnnotationStub.ObjC.ExternalClass -> TODO()
+        is AnnotationStub.ObjC.ExternalClass -> listOfNotNull(
+                ("protocolGetter" to protocolGetter.mapToAnnotationArgument()).takeIf { protocolGetter.isNotEmpty() },
+                ("binaryName" to binaryName.mapToAnnotationArgument()).takeIf { binaryName.isNotEmpty() }
+        ).toMap()
         AnnotationStub.CCall.CString -> mapOf()
         AnnotationStub.CCall.WCString -> mapOf()
         is AnnotationStub.CCall.Symbol ->
-            mapOf("id" to KmAnnotationArgument.StringValue(symbolName))
+            mapOf("id" to symbolName.mapToAnnotationArgument())
         is AnnotationStub.CStruct -> TODO()
         is AnnotationStub.CNaturalStruct -> TODO()
         is AnnotationStub.CLength -> TODO()
@@ -299,6 +340,7 @@ private fun TypeArgument.Variance.map(): KmVariance = when (this) {
     TypeArgument.Variance.OUT -> KmVariance.OUT
 }
 
+// TODO: Rename to mapToAnnotationArgument.
 private fun ConstantStub.map(): KmAnnotationArgument<*> = when (this) {
     is StringConstantStub -> KmAnnotationArgument.StringValue(value)
     is IntegralConstantStub -> when (size) {
