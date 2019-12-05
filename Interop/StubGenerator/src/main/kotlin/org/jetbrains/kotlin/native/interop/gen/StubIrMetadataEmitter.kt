@@ -20,10 +20,7 @@ class StubIrMetadataEmitter(
     }
 
     private fun emitModuleFragments(): List<KmModuleFragment> =
-        ModuleMetadataEmitter(context.configuration.pkgName).let {
-            builderResult.stubs.accept(it, null)
-            listOf(it.writeModule())
-        }
+        ModuleMetadataEmitter(context.configuration.pkgName)(builderResult.stubs).let(::listOf)
 }
 
 /**
@@ -31,82 +28,92 @@ class StubIrMetadataEmitter(
  */
 internal class ModuleMetadataEmitter(
         private val packageFqName: String
-) : StubIrVisitor<StubContainer?, Unit> {
+) {
 
-    private val uniqIds = StubIrUniqIdProvider()
+    operator fun invoke(module: SimpleStubContainer): KmModuleFragment =
+            VisitingContext().let {
+                module.accept(visitor, it)
+                writeModule(it)
+            }
 
-    private val classes = mutableListOf<KmClass>()
-    private val properties = mutableListOf<KmProperty>()
-    private val typeAliases = mutableListOf<KmTypeAlias>()
-    private val functions = mutableListOf<KmFunction>()
-
-    fun writeModule(): KmModuleFragment = KmModuleFragment().also { km ->
+    private fun writeModule(visitingContext: VisitingContext) = KmModuleFragment().also { km ->
         km.fqName = packageFqName
-        km.classes += classes
-        km.pkg = writePackage()
+        km.classes += visitingContext.classes.toList()
+        km.pkg = writePackage(visitingContext)
     }
 
-    private fun writePackage() = KmPackage().also { km ->
+    private fun writePackage(visitingContext: VisitingContext) = KmPackage().also { km ->
         km.fqName = packageFqName
-        km.typeAliases += typeAliases
-        km.properties += properties
-        km.functions += functions
+        km.typeAliases += visitingContext.typeAliases.toList()
+        km.properties += visitingContext.properties.toList()
+        km.functions += visitingContext.functions.toList()
     }
 
-    override fun visitClass(element: ClassStub, data: StubContainer?) {
-        // TODO("not implemented")
-    }
+    private data class VisitingContext(
+            val container: StubContainer? = null,
+            val uniqIds: StubIrUniqIdProvider = StubIrUniqIdProvider(),
+            val classes: MutableList<KmClass> = mutableListOf(),
+            val properties: MutableList<KmProperty> = mutableListOf(),
+            val typeAliases: MutableList<KmTypeAlias> = mutableListOf(),
+            val functions: MutableList<KmFunction> = mutableListOf()
+    )
 
-    override fun visitTypealias(element: TypealiasStub, data: StubContainer?) {
-        KmTypeAlias(element.flags, element.alias.topLevelName).apply {
-            uniqId = uniqIds.uniqIdForTypeAlias(element)
-            underlyingType = element.aliasee.map(shouldExpandTypeAliases = false)
-            expandedType = element.aliasee.map()
-        }.let(typeAliases::add)
-    }
+    private val visitor = object : StubIrVisitor<VisitingContext, Unit> {
+        override fun visitClass(element: ClassStub, data: VisitingContext) {
+            // TODO("not implemented")
+        }
 
-    override fun visitFunction(element: FunctionStub, data: StubContainer?) {
-        KmFunction(element.flags, element.name).apply {
-            element.annotations.mapTo(annotations, AnnotationStub::map)
-            returnType = element.returnType.map()
-            element.parameters.mapTo(valueParameters, FunctionParameterStub::map)
-            element.typeParameters.mapTo(typeParameters, TypeParameterStub::map)
-            uniqId = uniqIds.uniqIdForFunction(element)
-        }.let(functions::add)
-    }
+        override fun visitTypealias(element: TypealiasStub, data: VisitingContext) {
+            KmTypeAlias(element.flags, element.alias.topLevelName).apply {
+                uniqId = data.uniqIds.uniqIdForTypeAlias(element)
+                underlyingType = element.aliasee.map(shouldExpandTypeAliases = false)
+                expandedType = element.aliasee.map()
+            }.let(data.typeAliases::add)
+        }
 
-    override fun visitProperty(element: PropertyStub, data: StubContainer?) {
-        KmProperty(element.flags, element.name, element.getterFlags, element.setterFlags).apply {
-            element.annotations.mapTo(annotations, AnnotationStub::map)
-            uniqId = uniqIds.uniqIdForProperty(element)
-            returnType = element.type.map()
-            if (element.kind is PropertyStub.Kind.Var) {
-                val setter = element.kind.setter
-                setter.annotations.mapTo(setterAnnotations, AnnotationStub::map)
-                // TODO: Maybe it's better to explicitly add setter parameter in stub.
-                setterParameter = FunctionParameterStub("value", element.type).map()
-            }
-            getterAnnotations += when (element.kind) {
-                is PropertyStub.Kind.Val -> element.kind.getter.annotations.map(AnnotationStub::map)
-                is PropertyStub.Kind.Var -> element.kind.getter.annotations.map(AnnotationStub::map)
-                is PropertyStub.Kind.Constant -> emptyList()
-            }
-            if (element.kind is PropertyStub.Kind.Constant) {
-                compileTimeValue = element.kind.constant.map()
-            }
-        }.let(properties::add)
-    }
+        override fun visitFunction(element: FunctionStub, data: VisitingContext) {
+            KmFunction(element.flags, element.name).apply {
+                element.annotations.mapTo(annotations, AnnotationStub::map)
+                returnType = element.returnType.map()
+                element.parameters.mapTo(valueParameters, FunctionParameterStub::map)
+                element.typeParameters.mapTo(typeParameters, TypeParameterStub::map)
+                uniqId = data.uniqIds.uniqIdForFunction(element)
+            }.let(data.functions::add)
+        }
 
-    override fun visitConstructor(constructorStub: ConstructorStub, data: StubContainer?) {
-        // TODO("not implemented")
-    }
+        override fun visitProperty(element: PropertyStub, data: VisitingContext) {
+            KmProperty(element.flags, element.name, element.getterFlags, element.setterFlags).apply {
+                element.annotations.mapTo(annotations, AnnotationStub::map)
+                uniqId = data.uniqIds.uniqIdForProperty(element)
+                returnType = element.type.map()
+                if (element.kind is PropertyStub.Kind.Var) {
+                    val setter = element.kind.setter
+                    setter.annotations.mapTo(setterAnnotations, AnnotationStub::map)
+                    // TODO: Maybe it's better to explicitly add setter parameter in stub.
+                    setterParameter = FunctionParameterStub("value", element.type).map()
+                }
+                getterAnnotations += when (element.kind) {
+                    is PropertyStub.Kind.Val -> element.kind.getter.annotations.map(AnnotationStub::map)
+                    is PropertyStub.Kind.Var -> element.kind.getter.annotations.map(AnnotationStub::map)
+                    is PropertyStub.Kind.Constant -> emptyList()
+                }
+                if (element.kind is PropertyStub.Kind.Constant) {
+                    compileTimeValue = element.kind.constant.map()
+                }
+            }.let(data.properties::add)
+        }
 
-    override fun visitPropertyAccessor(propertyAccessor: PropertyAccessor, data: StubContainer?) {
-        // TODO("not implemented")
-    }
+        override fun visitConstructor(constructorStub: ConstructorStub, data: VisitingContext) {
+            // TODO("not implemented")
+        }
 
-    override fun visitSimpleStubContainer(simpleStubContainer: SimpleStubContainer, data: StubContainer?) {
-        simpleStubContainer.children.forEach { it.accept(this, simpleStubContainer) }
+        override fun visitPropertyAccessor(propertyAccessor: PropertyAccessor, data: VisitingContext) {
+            // TODO("not implemented")
+        }
+
+        override fun visitSimpleStubContainer(simpleStubContainer: SimpleStubContainer, data: VisitingContext) {
+            simpleStubContainer.children.forEach { it.accept(this, data.copy(container = simpleStubContainer)) }
+        }
     }
 }
 
