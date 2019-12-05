@@ -142,6 +142,14 @@ internal class ModuleMetadataEmitter(
 private fun flagsOfNotNull(vararg flags: Flag?): Flags =
         flagsOf(*listOfNotNull(*flags).toTypedArray())
 
+private val VisibilityModifier.flags: Flags
+    get() = flagsOfNotNull(
+            Flag.IS_PUBLIC.takeIf { this == VisibilityModifier.PUBLIC },
+            Flag.IS_PROTECTED.takeIf { this == VisibilityModifier.PROTECTED },
+            Flag.IS_INTERNAL.takeIf { this == VisibilityModifier.INTERNAL },
+            Flag.IS_PRIVATE.takeIf { this == VisibilityModifier.PRIVATE }
+    )
+
 private val FunctionStub.flags: Flags
     get() = flagsOfNotNull(
             Flag.Common.IS_PUBLIC,
@@ -236,6 +244,12 @@ private val ClassStub.flags: Flags
             Flag.Class.IS_CLASS.takeIf { this is ClassStub.Simple },
             Flag.Class.IS_ENUM_CLASS.takeIf { this is ClassStub.Enum }
     )
+
+private val ConstructorStub.flags: Flags
+    get() = flagsOfNotNull(
+            Flag.Constructor.IS_PRIMARY.takeIf { isPrimary },
+            Flag.HAS_ANNOTATIONS.takeIf { annotations.isNotEmpty() }
+    ) or visibility.flags
 
 private fun String.mapToAnnotationArgument() =
         KmAnnotationArgument.StringValue(this)

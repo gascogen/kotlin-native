@@ -62,3 +62,10 @@ val StubContainer.defaultMemberModality: MemberStubModality
         is ClassStub.Companion -> MemberStubModality.FINAL
         is ClassStub.Enum -> MemberStubModality.FINAL
     }
+
+val ClassStub.primaryConstructor: ConstructorStub?
+    get() = when (this) {
+        is ClassStub.Simple -> functions.filterIsInstance<ConstructorStub>().firstOrNull(ConstructorStub::isPrimary)
+        is ClassStub.Companion -> null
+        is ClassStub.Enum -> functions.filterIsInstance<ConstructorStub>().firstOrNull(ConstructorStub::isPrimary)
+    }

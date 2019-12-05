@@ -166,7 +166,7 @@ private class ObjCMethodStubBuilder(
                             context.configuration.disableDesignatedInitializerChecks
 
                     val annotations = listOf(AnnotationStub.ObjC.Constructor(method.selector, designated))
-                    val constructor = ConstructorStub(parameters, annotations)
+                    val constructor = ConstructorStub(parameters, annotations, false)
                     constructor
                 }
                 is ObjCCategory -> {
@@ -434,7 +434,7 @@ internal abstract class ObjCContainerStubBuilder(
         val defaultConstructor =  if (container is ObjCClass && methodToStub.values.none { it.isDefaultConstructor() }) {
             // Always generate default constructor.
             // If it is not produced for an init method, then include it manually:
-            ConstructorStub(listOf(), listOf(), VisibilityModifier.PROTECTED)
+            ConstructorStub(listOf(), listOf(), false, VisibilityModifier.PROTECTED)
         } else null
 
         return Pair(
@@ -448,7 +448,8 @@ internal abstract class ObjCContainerStubBuilder(
         return ClassStub.Simple(
                 classifier,
                 properties = properties,
-                functions = methods,
+                methods = methods.filterIsInstance<FunctionStub>(),
+                constructors = methods.filterIsInstance<ConstructorStub>(),
                 origin = origin,
                 modality = modality,
                 annotations = listOf(externalObjCAnnotation),
