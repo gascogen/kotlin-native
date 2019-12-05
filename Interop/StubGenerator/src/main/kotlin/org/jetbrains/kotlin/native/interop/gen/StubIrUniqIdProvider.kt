@@ -7,8 +7,11 @@ package org.jetbrains.kotlin.native.interop.gen
 import kotlinx.metadata.klib.UniqId
 import org.jetbrains.kotlin.backend.common.serialization.cityHash64
 
-internal class StubIrUniqIdProvider {
-    private val mangler = KotlinLikeInteropMangler()
+internal class StubIrUniqIdProvider(
+        private val mangler: KotlinLikeInteropMangler = KotlinLikeInteropMangler()
+) {
+    fun createChild(suffix: String): StubIrUniqIdProvider =
+            StubIrUniqIdProvider(KotlinLikeInteropMangler(ManglingContext.Entity(suffix, mangler.context)))
 
     fun uniqIdForFunction(function: FunctionStub): UniqId = with(mangler) {
         when (function.origin) {
